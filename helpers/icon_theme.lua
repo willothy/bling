@@ -42,7 +42,7 @@ end
 
 local function get_icon_by_class(self, client, apps)
   if client.class ~= nil then
-    local class = name_lookup[client.class] or client.class:lower()
+    local class = name_lookup[client.class] or client.class
 
     -- Try to remove dashes
     local class_1 = class:gsub("[%-]", "")
@@ -55,10 +55,14 @@ local function get_icon_by_class(self, client, apps)
     class_3 = class_3:match("(.-)%.") or class_3
     class_3 = class_3:match("(.-)%s+") or class_3
 
-    local possible_icon_names = { class, class_3, class_2, class_1 }
-    for _, app in ipairs(apps) do
-      local id = app:get_id():lower()
-      for _, possible_icon_name in ipairs(possible_icon_names) do
+    for _, possible_icon_name in ipairs({
+      class,
+      class_3,
+      class_2,
+      class_1,
+    }) do
+      for _, app in ipairs(apps) do
+        local id = app:get_id():lower()
         if id and id:find(possible_icon_name, 1, true) then
           return self:get_gicon_path(app:get_icon())
         end
@@ -70,32 +74,16 @@ end
 function icon_theme:get_client_icon_path(client)
   local apps = Gio.AppInfo.get_all()
 
-  local res = get_icon_by_pid_command(self, client, apps)
-  if res then
-    return res
-  end
-
-  res = get_icon_by_icon_name(self, client, apps)
-  if res then
-    return res
-  end
-  if client.class == "org.wezfurlong.wezterm" then
-    res = get_icon_by_class(self, client, apps)
-    if res then
-      return res
-    end
-  end
-  res = client.icon
-  if res then
-    return res
-  end
-  res = self:choose_icon({
-    "window",
-    "window-manager",
-    "xfwm4-default",
-    "window_list",
-  })
-  return res
+  return get_icon_by_pid_command(self, client, apps)
+    or get_icon_by_icon_name(self, client, apps)
+    or get_icon_by_class(self, client, apps)
+    or client.icon
+    or self:choose_icon({
+      "window",
+      "window-manager",
+      "xfwm4-default",
+      "window_list",
+    })
 end
 
 function icon_theme:choose_icon(icons_names)
