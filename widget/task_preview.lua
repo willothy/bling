@@ -123,7 +123,7 @@ local function draw_widget(
 end
 
 local enable = function(opts)
-  local opts = opts or {}
+  opts = opts or {}
 
   local widget_x = opts.x or dpi(20)
   local widget_y = opts.y or dpi(20)

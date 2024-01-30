@@ -12,35 +12,44 @@ local name_lookup = {
   ["jetbrains-studio"] = "android-studio",
 }
 
-local function get_icon_by_pid_command(self, client, apps)
+local function get_icon_by_pid_command(self, client, apps, cb)
   local pid = client.pid
   if pid ~= nil then
-    local handle = io.popen(string.format("ps -p %d -o comm=", pid))
-    local pid_command = handle:read("*a"):gsub("^%s*(.-)%s*$", "%1")
-    handle:close()
+    Capi.awful.spawn.easy_async_with_shell(
+      string.format("ps -p %d -o comm=", pid),
+      function(out, err, ret, exitcode)
+        if exitcode ~= 0 then
+          return
+        end
 
-    for _, app in ipairs(apps) do
-      local executable = app:get_executable()
-      if executable and executable:find(pid_command, 1, true) then
-        return self:get_gicon_path(app:get_icon())
+        local pid_command = out:gsub("^%s*(.-)%s*$", "%1")
+
+        for _, app in ipairs(apps) do
+          local executable = app:get_executable()
+          if executable and executable:find(pid_command, 1, true) then
+            cb(self:get_gicon_path(app:get_icon()))
+            return
+          end
+        end
       end
-    end
+    )
   end
 end
 
-local function get_icon_by_icon_name(self, client, apps)
+local function get_icon_by_icon_name(self, client, apps, cb)
   local icon_name = client.icon_name and client.icon_name:lower() or nil
   if icon_name ~= nil then
     for _, app in ipairs(apps) do
       local name = app:get_name():lower()
       if name and name:find(icon_name, 1, true) then
-        return self:get_gicon_path(app:get_icon())
+        cb(self:get_gicon_path(app:get_icon()))
+        return
       end
     end
   end
 end
 
-local function get_icon_by_class(self, client, apps)
+local function get_icon_by_class(self, client, apps, cb)
   if client.class ~= nil then
     local class = name_lookup[client.class] or client.class
 
@@ -64,26 +73,51 @@ local function get_icon_by_class(self, client, apps)
       for _, app in ipairs(apps) do
         local id = app:get_id():lower()
         if id and id:find(possible_icon_name, 1, true) then
-          return self:get_gicon_path(app:get_icon())
+          cb(self:get_gicon_path(app:get_icon()))
+          return
         end
       end
     end
   end
 end
 
-function icon_theme:get_client_icon_path(client)
+function icon_theme:get_client_icon_path(client, callback)
   local apps = Gio.AppInfo.get_all()
 
-  return get_icon_by_pid_command(self, client, apps)
-    or get_icon_by_icon_name(self, client, apps)
-    or get_icon_by_class(self, client, apps)
-    or client.icon
-    or self:choose_icon({
-      "window",
-      "window-manager",
-      "xfwm4-default",
-      "window_list",
-    })
+  local thunks = {
+    get_icon_by_pid_command,
+    get_icon_by_icon_name,
+    get_icon_by_class,
+    function(_, _, _, cb)
+      cb(client.icon)
+    end,
+    function(_, _, _, cb)
+      cb(self:choose_icon({
+        "window",
+        "window-manager",
+        "xfwm4-default",
+        "window_list",
+      }))
+    end,
+  }
+
+  local function run(last, icon)
+    if icon and icon ~= "" then
+      callback(icon)
+      return
+    end
+    local next, thunk = next(thunks, last)
+    local called = false
+    thunk(self, client, apps, function(ico)
+      called = true
+      run(next, ico)
+    end)
+    if not called then
+      run(next, nil)
+    end
+  end
+
+  run()
 end
 
 function icon_theme:choose_icon(icons_names)
